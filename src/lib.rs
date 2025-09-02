@@ -1,14 +1,8 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+use mlua::{Function, Lua, Table};
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+#[mlua::lua_module(name = "libplunder")]
+pub fn init(lua: &Lua) -> mlua::Result<Table> {
+    let table = lua.create_table()?;
+    table.set("add", Function::wrap(|(a, b): (u64, u64)| Ok(a + b)))?;
+    Ok(table)
 }
