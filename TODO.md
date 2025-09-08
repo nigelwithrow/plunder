@@ -1,0 +1,2 @@
+- [ ] instrument toWav to take an instrument and export it to a .wav file
+- [ ] lots of panics in p1

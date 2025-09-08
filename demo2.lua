@@ -19,7 +19,6 @@ return p1.new
   kick   | o   o   o   o
   snare  |   "   "   "   "
   hihat  | ''''''''''''''''
-  piano  | [              ]
   sample | [      ][      ]
          |
 ]]
@@ -28,14 +27,5 @@ return p1.new
   kick  = ofWav 'kick.wav',
   snare = ofWav 'snare.wav',
   hihat = ofWav 'hihat.wav',
-  piano = midi1.new
-    :sheet [[
-        [                            ]
-        A2      F2      C3      G2
-        A5  C5  G5  C5  A5  C5  G5  C5  
-    ]]
-    :instruments { midi 'TimGM6mb.sf2' :notes (4) },
-
-  sample = ofWav 'on-the-floor.wav'
-    :stretch (2)
+  sample = ofWav 'on-the-floor.wav' :stretch (2)
 }

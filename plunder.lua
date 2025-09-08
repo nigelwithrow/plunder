@@ -4,6 +4,8 @@ local libplunder = require 'libplunder'
 local plunder = {}
 
 plunder.p1 = libplunder.p1
+-- plunder.midi1 = libplunder.midi1
+plunder.ofWav = libplunder.of_wav
 
 -- function plunder.p1:instruments(instrs)
 --   local i = 0
@@ -21,9 +23,16 @@ plunder.p1 = libplunder.p1
 --   return self
 -- end
 
-function plunder.samp(filename)
-  return { filename, play = function() return 0 end }
-end
+-- function plunder.ofWav(filename)
+--   return {
+--     filename,
+--     play = function() return 0 end,
+--     stretch = function (self, factor)
+--       print("Stretched by a factor of: " .. factor)
+--       return self
+--     end,
+--   }
+-- end
 
 function plunder.midi(filename)
   return {
@@ -40,8 +49,9 @@ end
 
 function plunder.global()
   _G.p1 = plunder.p1
-  _G.samp = plunder.samp
+  _G.ofWav = plunder.ofWav
   _G.midi = plunder.midi
+  _G.midi1 = plunder.midi1
   return plunder
 end
 

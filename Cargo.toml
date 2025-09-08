@@ -1,10 +1,27 @@
+[workspace]
+members = [ "of_wav", "p1", "types"]
+
 [package]
 name = "plunder"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-mlua = { version = "0.11.3", features = ["lua54", "module"] }
+# workspace dependencies
+p1.workspace = true
+types.workspace = true
+of_wav.workspace = true
+# external dependencies
+mlua.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
+
+[workspace.dependencies]
+# workspace dependencies
+p1 = { path = "./p1" }
+types = { path = "./types" }
+of_wav = { path = "./of_wav" }
+# external dependencies
+mlua = { version = "0.11.3", features = ["lua54", "module"] }
+itertools = "0.14.0"

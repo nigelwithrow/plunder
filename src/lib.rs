@@ -1,16 +1,22 @@
-use mlua::{IntoLua, Lua, Table};
-
-/// `p1`, the flagship parser included with Plunder
-mod p1;
+use mlua::{Function, Lua, Table, UserData};
 
 #[mlua::lua_module(name = "libplunder")]
 pub fn init(lua: &Lua) -> mlua::Result<Table> {
     let table = lua.create_table()?;
-    table.set(p1::P1Factory::NAME, p1::P1Factory::to_lua(lua)?)?;
+    register_instrument_factory::<of_wav::OfWavFactory>(&table)?;
+    register_instrument_factory::<p1::P1Factory>(&table)?;
     Ok(table)
 }
 
-trait Plugin {
-    const NAME: &str;
-    fn to_lua(lua: &Lua) -> mlua::Result<impl IntoLua>;
+fn register_instrument_factory<T>(table: &Table) -> mlua::Result<()>
+where
+    T: types::InstrumentFactory + 'static,
+    T::Instrument: UserData,
+{
+    table.set(
+        T::NAME,
+        Function::wrap(|args: T::Args| {
+            T::construct(args).map(|instrument| types::InstrumentWrapper::new(Box::new(instrument)))
+        }),
+    )
 }

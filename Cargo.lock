@@ -53,6 +53,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e178e4fba8a2726903f6ba98a6d221e76f9c12c650d5dc0e6afdc50677b49650"
 
 [[package]]
+name = "hound"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
+
+[[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.175"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -122,6 +137,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "of_wav"
+version = "0.1.0"
+dependencies = [
+ "hound",
+ "itertools",
+ "types",
+]
+
+[[package]]
+name = "p1"
+version = "0.1.0"
+dependencies = [
+ "mlua",
+ "types",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -155,6 +187,9 @@ name = "plunder"
 version = "0.1.0"
 dependencies = [
  "mlua",
+ "of_wav",
+ "p1",
+ "types",
 ]
 
 [[package]]
@@ -243,6 +278,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "types"
+version = "0.1.0"
+dependencies = [
+ "mlua",
 ]
 
 [[package]]
