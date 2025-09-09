@@ -7,4 +7,4 @@ edition = "2024"
 # workspace dependencies
 types.workspace = true
 # external dependencies
-mlua.workspace = true
+serde.workspace = true

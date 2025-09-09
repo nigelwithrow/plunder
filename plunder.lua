@@ -5,7 +5,7 @@ local plunder = {}
 
 plunder.p1 = libplunder.p1
 -- plunder.midi1 = libplunder.midi1
-plunder.ofWav = libplunder.of_wav
+plunder.ofWav = libplunder.ofWav
 
 -- function plunder.p1:instruments(instrs)
 --   local i = 0

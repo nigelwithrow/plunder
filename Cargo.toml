@@ -1,5 +1,5 @@
 [workspace]
-members = [ "of_wav", "p1", "types"]
+members = [ "types", "of_wav", "p1" ]
 
 [package]
 name = "plunder"
@@ -23,5 +23,6 @@ p1 = { path = "./p1" }
 types = { path = "./types" }
 of_wav = { path = "./of_wav" }
 # external dependencies
-mlua = { version = "0.11.3", features = ["lua54", "module"] }
+mlua = { version = "0.11.3", features = ["lua54", "module", "serde"] }
+serde = { version = "1.0.219", features = ["derive"] }
 itertools = "0.14.0"

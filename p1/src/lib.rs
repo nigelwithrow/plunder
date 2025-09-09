@@ -1,19 +1,13 @@
 //! `p1`, the flagship parser instrument included with Plunder
 
-use std::{
-    collections::HashMap,
-    fmt,
-    ops::DerefMut,
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, fmt, ops::Deref as _, str::FromStr, sync::Arc};
 
-use mlua::{Table, UserData, Value};
-use types::Sample;
+use types::*;
 
 #[derive(Debug)]
 pub enum P1Error {
-    Lua(mlua::Error),
+    Lua(LuaError),
+    Sheet,
     InstrumentUnknown(String),
     ArrangementMismatch(bool),
     UnboundInstrument(String),
@@ -23,6 +17,7 @@ impl fmt::Display for P1Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             P1Error::Lua(error) => error.fmt(f),
+            P1Error::Sheet => write!(f, "Sheet error"),
             P1Error::InstrumentUnknown(name) => write!(
                 f,
                 "Instrument provided for \"{name}\" is of an unrecognized Lua type"
@@ -45,17 +40,17 @@ impl fmt::Display for P1Error {
 
 impl std::error::Error for P1Error {}
 
-impl From<mlua::Error> for P1Error {
-    fn from(value: mlua::Error) -> Self {
+impl From<LuaError> for P1Error {
+    fn from(value: LuaError) -> Self {
         P1Error::Lua(value)
     }
 }
 
-impl Into<mlua::Error> for P1Error {
-    fn into(self) -> mlua::Error {
-        match self {
+impl From<P1Error> for LuaError {
+    fn from(value: P1Error) -> Self {
+        match value {
             P1Error::Lua(error) => error,
-            _ => mlua::Error::ExternalError(Arc::new(self)),
+            _ => LuaError::ExternalError(Arc::new(value)),
         }
     }
 }
@@ -217,22 +212,30 @@ impl FromStr for Sheet {
     }
 }
 
+impl FromLua for Sheet {
+    fn from_lua(value: LuaValue, _: &Lua) -> LuaResult<Self> {
+        let string = value
+            .as_string()
+            .ok_or(LuaError::RuntimeError("expected table".into()))?
+            .to_string_lossy();
+        // TODO HERE: proper error handling for Sheet
+        Ok(Sheet::from_str(&string).map_err(|()| P1Error::Sheet)?)
+    }
+}
+
 //
 // Instruments
 //
-pub type InstrumentMono =
-    mlua::UserDataRef<types::InstrumentWrapper<Box<dyn types::Instrument<1> + 'static>>>;
-pub type InstrumentStereo =
-    mlua::UserDataRef<types::InstrumentWrapper<Box<dyn types::Instrument<2>>>>;
+pub type DynInstrument = LuaUserDataRef<Box<dyn types::BiInstrument>>;
 
 pub enum Instruments {
-    Labelled(HashMap<String, (InstrumentMono, InstrumentStereo)>),
-    Indexed(Vec<(InstrumentMono, InstrumentStereo)>),
+    Labelled(HashMap<String, DynInstrument>),
+    Indexed(Vec<DynInstrument>),
 }
 
 impl Instruments {
     pub fn from_lua_pairs<E>(
-        instruments: impl Iterator<Item = Result<(Value, Value), E>>,
+        instruments: impl Iterator<Item = Result<(LuaValue, LuaValue), E>>,
     ) -> Result<Option<Self>, P1Error>
     where
         P1Error: From<E>,
@@ -241,18 +244,15 @@ impl Instruments {
 
         #[inline(always)]
         fn lua_value_to_instrument(
-            lua_value: Value,
+            lua_value: LuaValue,
             key: Result<String, i64>,
-        ) -> Result<(InstrumentMono, InstrumentStereo), P1Error> {
-            let Value::UserData(user_data) = lua_value else {
+        ) -> Result<DynInstrument, P1Error> {
+            let LuaValue::UserData(user_data) = lua_value else {
                 return Err(P1Error::InstrumentUnknown(
                     key.unwrap_or_else(|i| i.to_string()),
                 ));
             };
-            Ok((
-                user_data.borrow::<types::InstrumentWrapper<Box<dyn types::Instrument<1>>>>()?,
-                user_data.borrow::<types::InstrumentWrapper<Box<dyn types::Instrument<2>>>>()?,
-            ))
+            Ok(user_data.borrow::<Box<dyn BiInstrument>>()?)
         }
 
         let mut collection = None;
@@ -260,8 +260,8 @@ impl Instruments {
             let (name, instrument) = instrument?;
             match (&collection, &name) {
                 // Determine arrangement type of this instrument-table
-                (None, Value::String(_)) => collection = Some(Labelled(HashMap::new())),
-                (None, Value::Integer(_)) => collection = Some(Indexed(Vec::new())),
+                (None, LuaValue::String(_)) => collection = Some(Labelled(HashMap::new())),
+                (None, LuaValue::Integer(_)) => collection = Some(Indexed(Vec::new())),
                 (Some(_), _) => (),
                 // Ignore
                 // - number-indexed pairs for instrument-table determined to be labelled,
@@ -272,14 +272,14 @@ impl Instruments {
             match (&mut collection, name) {
                 // Determine arrangement type of this instrument-table
                 // Relevant pair for this instrument-table
-                (Some(Labelled(map)), Value::String(s)) => {
+                (Some(Labelled(map)), LuaValue::String(s)) => {
                     _ = map.insert(
                         s.to_string_lossy(),
                         lua_value_to_instrument(instrument, Ok(s.to_string_lossy()))?,
                     )
                 }
                 // NOTE: ignores pair index (making it possible to have comments and stuff)
-                (Some(Indexed(list)), Value::Integer(i)) => {
+                (Some(Indexed(list)), LuaValue::Integer(i)) => {
                     list.push(lua_value_to_instrument(instrument, Err(i))?)
                 }
                 (None, _) => unreachable!("previous match ensures `collection` is initialized"),
@@ -290,14 +290,23 @@ impl Instruments {
     }
 }
 
-#[derive(Debug)]
-enum P1Buffer {
-    Mono(Vec<Sample<1>>),
-    Stereo(Vec<Sample<2>>),
+impl FromLua for Instruments {
+    fn from_lua(value: LuaValue, _: &Lua) -> LuaResult<Self> {
+        let table = value
+            .as_table()
+            .ok_or(LuaError::RuntimeError("expected table".into()))?;
+        Ok(Instruments::from_lua_pairs(table.pairs())
+            .map_err(Into::<LuaError>::into)?
+            .unwrap_or(Instruments::Indexed(Vec::new())))
+    }
 }
 
-struct Config {
-    interval: usize,
+//
+// Config
+//
+#[derive(serde::Deserialize)]
+pub struct Config {
+    pub interval: usize,
 }
 
 impl Default for Config {
@@ -306,31 +315,43 @@ impl Default for Config {
     }
 }
 
-#[derive(Default)]
-struct Inner {
-    config: Config,
-    sheet: Option<Sheet>,
-    instruments: Option<Instruments>,
-    buffer: Option<P1Buffer>,
+impl FromLua for Config {
+    fn from_lua(value: LuaValue, _: &Lua) -> LuaResult<Self> {
+        use serde::Deserialize as _;
+        Config::deserialize(LuaDeserializer::new(value))
+    }
 }
 
-impl Inner {
-    pub fn render(&mut self) -> Result<(), P1Error> {
-        let Self {
-            sheet, instruments, ..
-        } = self;
-        let sheet = sheet.as_ref().unwrap();
-        let instruments = instruments.as_ref().unwrap();
+//
+// Rendered Buffer
+//
+#[derive(Debug)]
+pub enum P1Buffer {
+    Mono(Vec<Sample<1>>),
+    Stereo(Vec<Sample<2>>),
+}
+
+impl P1Buffer {
+    pub fn render(
+        config: Config,
+        sheet: Sheet,
+        instruments: Instruments,
+    ) -> Result<Option<Self>, P1Error> {
         let mut buffer = None;
 
         match (sheet, instruments) {
             (Sheet::Labelled { sheet, .. }, Instruments::Labelled(instruments)) => {
                 for (name, pat) in sheet.iter() {
-                    let size = pat.len() * self.config.interval;
-                    let (instrument_mono, instrument_stereo) = instruments
+                    let size = pat.len() * config.interval;
+                    let instrument = instruments
                         .get(name)
                         .ok_or_else(|| P1Error::UnboundInstrument(name.clone()))?;
-                    match (instrument_stereo.init(), instrument_mono.init()) {
+                    let instrument: &Box<dyn types::BiInstrument> = &*instrument;
+                    let instrument: &dyn types::BiInstrument = instrument.deref();
+                    match (
+                        Instrument::<2>::init(instrument),
+                        Instrument::<1>::init(instrument),
+                    ) {
                         (Ok(()), _) => {
                             match buffer {
                                 Some(P1Buffer::Mono(_)) => {
@@ -350,9 +371,7 @@ impl Inner {
                                 buffer.insert(
                                     i,
                                     buffer.get(i).map(|_| todo!("blend sample")).unwrap_or(
-                                        instrument_stereo
-                                            .get(0)
-                                            .unwrap_or_else(|| todo!("empty sample")),
+                                        instrument.get(0).unwrap_or_else(|| todo!("empty sample")),
                                     ),
                                 );
                             }
@@ -365,92 +384,54 @@ impl Inner {
             (Sheet::Indexed { .. }, Instruments::Indexed(_)) => todo!(),
             _ => unreachable!(),
         }
-        Ok(())
+        Ok(buffer)
     }
 }
 
+//
+// P1, the Instrument
+//
 #[derive(Clone)]
-pub struct P1(Arc<Mutex<Inner>>);
+pub struct P1(Arc<P1Buffer>);
 
 impl P1 {
-    fn new() -> Self {
-        P1(Arc::new(Mutex::new(Inner::default())))
+    pub fn render(
+        config: Config,
+        sheet: Sheet,
+        instruments: Instruments,
+    ) -> Result<Option<Self>, P1Error> {
+        Ok(P1Buffer::render(config, sheet, instruments)?.map(|p1_buffer| P1(Arc::new(p1_buffer))))
     }
-
-    fn deref_(&self) -> impl DerefMut<Target = Inner> {
-        self.0.lock().unwrap()
-    }
-}
-
-impl UserData for P1 {
-    // TODO: possible optimization when sheet already known to only probe instruments table for each existing instrument key in sheets
-    fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("instruments", |_, this, instruments: Table| {
-            // TODO: allow extending instruments by repeated `instruments` calls instead of overwriting the previous one
-            {
-                let mut this = this.deref_();
-
-                this.instruments = Instruments::from_lua_pairs(instruments.pairs::<Value, Value>())
-                    .map_err(Into::<mlua::Error>::into)?;
-                if this.sheet.is_some() && this.instruments.is_some() {
-                    this.render().map_err(Into::<mlua::Error>::into)?;
-                }
-            }
-            Ok(this.clone())
-        });
-
-        methods.add_method("sheet", |_, this, sheet: String| {
-            // TODO: allow extending sheet by repeated `sheet` calls instead of overwriting the previous one
-            {
-                let mut this = this.deref_();
-
-                this.sheet = Sheet::from_str(&sheet).ok();
-                if this.sheet.is_some() && this.instruments.is_some() {
-                    this.render().map_err(Into::<mlua::Error>::into)?;
-                }
-            }
-            Ok(this.clone())
-        });
-
-        methods.add_method("show", |_, this, ()| {
-            println!("{:?}", this.deref_().buffer);
-            Ok(())
-        });
-    }
-    // fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {}
 }
 
 impl types::Instrument<1> for P1 {
     fn init(&self) -> Result<(), String> {
-        let mut inner = self.deref_();
-        match inner.buffer {
-            Some(P1Buffer::Mono(_)) => Ok(()),
-            Some(P1Buffer::Stereo(_)) => unimplemented!("downgrade stereo buffer"),
-            None => match &inner.sheet {
-                // No buffer but sheet has loop - allocate empty buffer of loop size
-                //
-                // TODO add warning here: sheet present, 0 instruments routed
-                Some(sheet) => {
-                    let (loop_start, loop_end) = sheet.r#loop();
-                    inner.buffer = Some(P1Buffer::Mono(
-                        (*loop_start..=*loop_end)
-                            .map(|_| (0..32).map(|_| Sample::F32([0.])))
-                            .flatten()
-                            .collect(),
-                    ));
-                    Ok(())
-                }
-                None => Err("P1 can't generate any output without a sheet".to_string()),
-            },
-        }
+        // let mut inner = self.deref_();
+        // match inner.buffer {
+        //     Some(P1Buffer::Mono(_)) => Ok(()),
+        //     Some(P1Buffer::Stereo(_)) => unimplemented!("downgrade stereo buffer"),
+        //     None => match &inner.sheet {
+        //         // No buffer but sheet has loop - allocate empty buffer of loop size
+        //         //
+        //         // TODO add warning here: sheet present, 0 instruments routed
+        //         Some(sheet) => {
+        //             let (loop_start, loop_end) = sheet.r#loop();
+        //             inner.buffer = Some(P1Buffer::Mono(
+        //                 (*loop_start..=*loop_end)
+        //                     .map(|_| (0..32).map(|_| Sample::F32([0.])))
+        //                     .flatten()
+        //                     .collect(),
+        //             ));
+        //             Ok(())
+        //         }
+        //         None => Err("P1 can't generate any output without a sheet".to_string()),
+        //     },
+        // }
+        Ok(())
     }
 
     fn get(&self, id: u32) -> Option<Sample<1>> {
-        let Inner {
-            buffer: Some(P1Buffer::Mono(mono_buffer)),
-            ..
-        } = &mut *self.deref_()
-        else {
+        let P1Buffer::Mono(mono_buffer) = &*self.0 else {
             unreachable!("if init called, buffer should be initialized as mono")
         };
         mono_buffer.get(id as usize).copied()
@@ -459,66 +440,41 @@ impl types::Instrument<1> for P1 {
 
 impl types::Instrument<2> for P1 {
     fn init(&self) -> Result<(), String> {
-        let mut inner = self.deref_();
-        match inner.buffer {
-            Some(P1Buffer::Stereo(_)) => Ok(()),
-            Some(P1Buffer::Mono(_)) => unimplemented!("upgrade stereo buffer"),
-            None => match &inner.sheet {
-                // No buffer but sheet has loop - allocate empty buffer of loop size
-                //
-                // TODO add warning here: sheet present, 0 instruments routed
-                Some(sheet) => {
-                    let (loop_start, loop_end) = sheet.r#loop();
-                    inner.buffer = Some(P1Buffer::Stereo(
-                        (*loop_start..=*loop_end)
-                            .map(|_| (0..32).map(|_| Sample::F32([0., 0.])))
-                            .flatten()
-                            .collect(),
-                    ));
-                    Ok(())
-                }
-                None => Err("P1 can't generate any output without a sheet".to_string()),
-            },
-        }
+        // let mut inner = self.deref_();
+        // match inner.buffer {
+        //     Some(P1Buffer::Stereo(_)) => Ok(()),
+        //     Some(P1Buffer::Mono(_)) => unimplemented!("upgrade stereo buffer"),
+        //     None => match &inner.sheet {
+        //         // No buffer but sheet has loop - allocate empty buffer of loop size
+        //         //
+        //         // TODO add warning here: sheet present, 0 instruments routed
+        //         Some(sheet) => {
+        //             let (loop_start, loop_end) = sheet.r#loop();
+        //             inner.buffer = Some(P1Buffer::Stereo(
+        //                 (*loop_start..=*loop_end)
+        //                     .map(|_| (0..32).map(|_| Sample::F32([0., 0.])))
+        //                     .flatten()
+        //                     .collect(),
+        //             ));
+        //             Ok(())
+        //         }
+        //         None => Err("P1 can't generate any output without a sheet".to_string()),
+        //     },
+        // }
+        Ok(())
     }
 
     fn get(&self, id: u32) -> Option<Sample<2>> {
-        let Inner {
-            buffer: Some(P1Buffer::Stereo(stereo_buffer)),
-            ..
-        } = &mut *self.deref_()
-        else {
+        let P1Buffer::Stereo(stereo_buffer) = &*self.0 else {
             unreachable!("if init called, buffer should be initialized as stereo")
         };
         stereo_buffer.get(id as usize).copied()
     }
 }
 
-/// Factory to construct new `P1`s using `.new` in Lua
-pub struct P1Factory;
+impl types::BiInstrument for P1 {}
 
-impl UserData for P1Factory {
-    fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("new", |_, _| Ok(P1::new()));
-    }
-}
-
-// impl types::Plugin for P1Factory {
-//     const NAME: &str = "p1";
-
-//     fn to_lua(_lua: &Lua) -> mlua::Result<impl IntoLua> {
-//         Ok(P1Factory)
-//     }
-// }
-
-impl types::InstrumentFactory for P1Factory {
-    type Args = ();
-    type Instrument = P1;
-    const NAME: &str = "p1";
-    fn construct((): ()) -> mlua::Result<Self::Instrument> {
-        Ok(P1::new())
-    }
-}
+impl LuaUserData for P1 {}
 
 #[cfg(test)]
 mod tests {

@@ -1,6 +1,4 @@
-use std::ops::{Deref, DerefMut};
-
-mod utils;
+pub mod registry_transfer;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Sample<const CHANNELS: usize> {
@@ -51,63 +49,104 @@ pub trait Instrument<const CHANNELS: usize> {
     fn get(&self, id: u32) -> Option<Sample<CHANNELS>>;
 }
 
-// pub trait AudioInstrument {
-//     type Ping;
-//     /// `None` indicates stream over
-//     fn next(&mut self, input: Self::Ping) -> Option<Sample>;
-// }
-
-// Only for organisation purposes
-// pub trait Plugin {
-//     const NAME: &str;
-//     fn to_lua(lua: &Lua) -> mlua::Result<impl IntoLua>;
-// }
-
 pub use mlua::prelude::*;
-use utils::RegistryTransfer;
+pub use mlua::serde::Deserializer as LuaDeserializer;
+pub use mlua::serde::Serializer as LuaSerializer;
 
-pub trait InstrumentFactory {
-    // TODO let factory create more complex APIs (e.g.: `samp.wav {'..'}`)
-    type Args: FromLuaMulti;
-    type Instrument: Instrument<1> + Instrument<2> + LuaUserData;
-    const NAME: &str;
-    fn construct(args: Self::Args) -> LuaResult<Self::Instrument>;
-}
+// pub trait InstrumentFactory {
+//     // TODO let factory create more complex APIs (e.g.: `samp.wav {'..'}`)
+//     type Args: FromLuaMulti;
+//     const NAME: &str;
+//     fn construct(args: Self::Args) -> LuaResult<Box<dyn BiInstrument>>;
+// }
 
-#[derive(Debug)]
-pub struct InstrumentWrapper<T>(T);
-impl<T> InstrumentWrapper<T> {
-    pub fn new(instrument: T) -> Self {
-        InstrumentWrapper(instrument)
-    }
-}
-impl<T> Deref for InstrumentWrapper<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl<T> DerefMut for InstrumentWrapper<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+pub trait BiInstrument: Instrument<1> + Instrument<2> {}
 
-impl<T> AsRef<T> for InstrumentWrapper<Box<T>> {
-    fn as_ref(&self) -> &T {
-        &self.0
-    }
-}
-impl<T> AsMut<T> for InstrumentWrapper<Box<T>> {
-    fn as_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
+impl LuaUserData for Box<dyn BiInstrument> {}
 
-impl<T: Instrument<1> + Instrument<2> + LuaUserData> LuaUserData for InstrumentWrapper<Box<T>> {
-    fn register(registry: &mut LuaUserDataRegistry<Self>) {
-        let mut registry = RegistryTransfer::new(registry);
-        T::add_fields(&mut registry);
-        T::add_methods(&mut registry);
-    }
-}
+// pub struct InstrumentWrapper(pub Box<dyn BiInstrument>);
+// pub struct InstrumentWrapper<T>(pub DynInstrumentWrapper, PhantomData<T>);
+
+// impl<T> InstrumentWrapper<T>
+// where
+//     T: BiInstrument + Clone + 'static,
+// {
+//     pub fn new(instrument: T) -> Self {
+//         InstrumentWrapper(DynInstrumentWrapper(Box::new(instrument)), PhantomData)
+//     }
+// }
+// // impl<T> Deref for InstrumentWrapper<T> {
+// //     type Target = T;
+// //     fn deref(&self) -> &Self::Target {
+// //         &self.0
+// //     }
+// // }
+// // impl<T> DerefMut for InstrumentWrapper<T> {
+// //     fn deref_mut(&mut self) -> &mut Self::Target {
+// //         &mut self.0
+// //     }
+// // }
+
+// impl<T> Instrument<1> for InstrumentWrapper<T> {
+//     fn init(&self) -> Result<(), String> {
+//         <_ as Instrument<1>>::init(&*self.0.0)
+//     }
+//     fn get(&self, id: u32) -> Option<Sample<1>> {
+//         self.0.0.get(id)
+//     }
+// }
+
+// impl<T> Instrument<2> for InstrumentWrapper<T> {
+//     fn init(&self) -> Result<(), String> {
+//         <_ as Instrument<2>>::init(&*self.0.0)
+//     }
+//     fn get(&self, id: u32) -> Option<Sample<2>> {
+//         self.0.0.get(id)
+//     }
+// }
+
+// impl<T> BiInstrument for InstrumentWrapper<T> {}
+
+// // impl<T> AsRef<T> for InstrumentWrapper<T> {
+// //     fn as_ref(&self) -> &T {
+// //         &self.0
+// //     }
+// // }
+// // impl<T> AsMut<T> for InstrumentWrapper<T> {
+// //     fn as_mut(&mut self) -> &mut T {
+// //         &mut self.0
+// //     }
+// // }
+
+// impl<T> AsRef<Box<dyn BiInstrument>> for InstrumentWrapper<T> {
+//     fn as_ref(&self) -> &Box<dyn BiInstrument> {
+//         &self.0.0
+//     }
+// }
+
+// impl<T> AsMut<Box<dyn BiInstrument>> for InstrumentWrapper<T> {
+//     fn as_mut(&mut self) -> &mut Box<dyn BiInstrument> {
+//         &mut self.0.0
+//     }
+// }
+
+// impl<T: Instrument<1> + Instrument<2> + LuaUserData> LuaUserData for InstrumentWrapper<T> {
+//     fn register(registry: &mut LuaUserDataRegistry<Self>) {
+//         let mut registry = RegistryTransfer::new(registry);
+//         T::add_fields(&mut registry);
+//         T::add_methods(&mut registry);
+//     }
+// }
+
+// pub struct DynInstrumentWrapper(Box<dyn BiInstrument>);
+
+// impl LuaUserData for DynInstrumentWrapper {
+//     fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {}
+
+//     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {}
+
+//     fn register(registry: &mut LuaUserDataRegistry<Self>) {
+//         Self::add_fields(registry);
+//         Self::add_methods(registry);
+//     }
+// }

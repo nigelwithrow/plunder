@@ -24,6 +24,33 @@ Like traits. Contexts should be implemented even for intermediate steps
 Takes string,
 returns ??
 
+
+
+
+# Instruments
+
+## OfWav
+```rs
+type OfWav impl LuaUserData, Instrument<1>, Instrument<2>;
+Lua_fn load: (path: String) -> LuaResult<OfWav>;
+```
+
+## P1
+
+```rs
+// Sheet
+type Sheet impl LuaUserData;
+Rust_fn create_sheet: (s: String) -> LuaResult<Sheet>;
+
+// Instrument Map
+type InstrumentMap impl LuaUserData;
+Rust_fn create_instrument_map: (s: LuaTable) -> LuaResult<Option<InstrumentMap>>;
+
+// 
+type P1 impl LuaUserData, Instrument<1>, Instrument<2>;
+Lua_fn create_p1: (config: Option<LuaValue>, sheet: String, instrument_map: LuaTable) -> LuaResult<P1>;
+```
+
 # Watch
 
 ```python
