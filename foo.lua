@@ -1,12 +1,12 @@
-p = require 'libplunder'
+require 'plunder'.global()
 
-samp = p.ofWav '/home/admin1234/Kikuo - あなぐらぐらし [I15sK7dNMOM].wav'
+p1
+.new { interval = 1000 }
 
-sheet = [[
+:sheet [[
         | [      ]
- samp   | o
+ sample | o
 ]]
 
-conf = { interval = 1000 }
-
-p.p1.render(conf, sheet, { samp = samp })
+:instruments
+  { sample = ofWav '/home/admin1234/Kikuo - あなぐらぐらし [I15sK7dNMOM].wav' }

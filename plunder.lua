@@ -3,36 +3,60 @@ local libplunder = require 'libplunder'
 
 local plunder = {}
 
-plunder.p1 = libplunder.p1
--- plunder.midi1 = libplunder.midi1
+
+--
+-- ofWav
+--
+---@class Instrument
+---@type fun(path: string): Instrument
 plunder.ofWav = libplunder.ofWav
 
--- function plunder.p1:instruments(instrs)
---   local i = 0
---   for k, v in pairs(instrs) do i = i + 1 end
---   print(i .. " instruments attached")
---   return self
--- end
 
--- ---@param sheet string
--- function plunder.p1.sheet(self, sheet)
---   print("> Sheet attached")
---   print(sheet:match('\n')[1])
---   print("26 + 13 = " .. libplunder.add(26, 13))
---   print("< Sheet attached")
---   return self
--- end
+--
+-- p1
+--
 
--- function plunder.ofWav(filename)
---   return {
---     filename,
---     play = function() return 0 end,
---     stretch = function (self, factor)
---       print("Stretched by a factor of: " .. factor)
---       return self
---     end,
---   }
--- end
+---@class P1Config: {interval: number}
+---@alias P1InstrumentMap ({[string]: Instrument} | Instrument[])
+
+---@class P1: {_conf: P1Config?; _sheet: string?; _instruments: P1InstrumentMap, _buffer: Instrument?}
+---@field sheet fun(self: P1, sheet: string): P1
+---@field instruments fun(self: P1, instruments: P1InstrumentMap): P1
+---@field get {sheet: fun(P1): string; instruments: fun(P1): ({[string]: Instrument} | Instrument[])}
+
+local p1 = {}
+p1.__metatable = {}
+p1.__metatable.__index = p1.__metatable
+---@param self P1
+---@param sheet string
+---@return P1
+function p1.__metatable:sheet(sheet)
+  self._sheet = sheet
+  if self._conf and self._sheet and self._instruments then
+    self._buffer = libplunder.p1.render(self._conf, self._sheet, self._instruments)
+  end
+  return self
+end
+
+---@param self P1
+---@param instruments P1InstrumentMap
+---@return P1
+function p1.__metatable:instruments(instruments)
+  self._instruments = instruments
+  if self._conf and self._sheet and self._instruments then
+    self._buffer = libplunder.p1.render(self._conf, self._sheet, self._instruments)
+  end
+  return self
+end
+
+---@param conf P1Config
+---@return P1
+p1.new = function(conf)
+  local self = setmetatable({ _conf = conf }, p1.__metatable)
+  return self
+end
+
+plunder.p1 = p1
 
 function plunder.midi(filename)
   return {
