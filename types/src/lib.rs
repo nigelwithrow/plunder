@@ -45,7 +45,7 @@ impl<const CHANNELS: usize> Sample<CHANNELS> {
 }
 
 pub trait Instrument<const CHANNELS: usize> {
-    fn init(&self) -> Result<(), String>;
+    fn ok(&self) -> Result<(), String>;
     fn get(&self, id: u32) -> Option<Sample<CHANNELS>>;
 }
 

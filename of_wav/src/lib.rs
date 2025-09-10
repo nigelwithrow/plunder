@@ -108,7 +108,7 @@ impl OfWav {
 }
 
 impl types::Instrument<1> for OfWav {
-    fn init(&self) -> Result<(), String> {
+    fn ok(&self) -> Result<(), String> {
         // Of_wav will provide an implementation to interpolate stereo audio to mono
         Ok(())
     }
@@ -122,7 +122,7 @@ impl types::Instrument<1> for OfWav {
 }
 
 impl types::Instrument<2> for OfWav {
-    fn init(&self) -> Result<(), String> {
+    fn ok(&self) -> Result<(), String> {
         // Of_wav will provide an implementation to interpolate mono audio to stereo
         Ok(())
     }

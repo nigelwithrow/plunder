@@ -349,8 +349,8 @@ impl P1Buffer {
                     let instrument: &Box<dyn types::BiInstrument> = &*instrument;
                     let instrument: &dyn types::BiInstrument = instrument.deref();
                     match (
-                        Instrument::<2>::init(instrument),
-                        Instrument::<1>::init(instrument),
+                        Instrument::<2>::ok(instrument),
+                        Instrument::<1>::ok(instrument),
                     ) {
                         (Ok(()), _) => {
                             match buffer {
@@ -405,7 +405,7 @@ impl P1 {
 }
 
 impl types::Instrument<1> for P1 {
-    fn init(&self) -> Result<(), String> {
+    fn ok(&self) -> Result<(), String> {
         // let mut inner = self.deref_();
         // match inner.buffer {
         //     Some(P1Buffer::Mono(_)) => Ok(()),
@@ -439,7 +439,7 @@ impl types::Instrument<1> for P1 {
 }
 
 impl types::Instrument<2> for P1 {
-    fn init(&self) -> Result<(), String> {
+    fn ok(&self) -> Result<(), String> {
         // let mut inner = self.deref_();
         // match inner.buffer {
         //     Some(P1Buffer::Stereo(_)) => Ok(()),
